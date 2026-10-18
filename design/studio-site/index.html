@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DUSK — Vibe Code Atelier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+:root{
+  --paper:#F2EFE6;
+  --ink:#0A0A0B;
+  --lime:#D6FF2A;
+  --verm:#FF3D0D;
+  --violet:#7A5CFF;
+  --acid:#E9FF70;
+  --line:#0A0A0B;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--paper);color:var(--ink)}
+body{font-family:"Space Grotesk",system-ui,sans-serif;overscroll-behavior:none;cursor:grab}
+body.dragging{cursor:grabbing}
+a{color:inherit;text-decoration:none}
+
+/* grain */
+body::after{
+  content:"";
+  position:fixed;inset:0;pointer-events:none;z-index:9999;
+  opacity:0.05;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* top chrome */
+.topbar{
+  position:fixed;top:0;left:0;right:0;z-index:50;
+  display:flex;align-items:center;justify-content:space-between;
+  height:48px;padding:0 14px;
+  background:var(--ink);color:var(--paper);
+  font-family:"Fragment Mono",monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;
+  border-bottom:1px solid #1a1a1a;
+}
+.topbar-left{display:flex;align-items:center;gap:18px}
+.logo{font-family:"Syne",sans-serif;font-weight:800;font-size:15px;letter-spacing:-0.02em;line-height:1}
+.logo i{font-family:"Instrument Serif",serif;font-weight:400;font-style:italic;color:var(--lime);letter-spacing:0}
+.live{display:flex;align-items:center;gap:8px;border:1px solid #333;padding:6px 10px;border-radius:999px}
+.live-dot{width:7px;height:7px;background:var(--verm);border-radius:50%;box-shadow:0 0 10px var(--verm);animation:pulse 1.1s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.coord{opacity:.7}
+.drag-hint{border:1px solid var(--paper);padding:6px 10px;border-radius:999px;display:flex;align-items:center;gap:8px}
+.drag-hint b{width:14px;height:14px;border:1px solid var(--paper);border-radius:50%;display:grid;place-items:center;font-size:8px}
+.cta-top{background:var(--lime);color:var(--ink);padding:8px 14px;border-radius:999px;font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:11px;letter-spacing:0.04em;cursor:pointer;border:none}
+.cta-top:hover{transform:translateY(-1px)}
+
+/* viewport */
+.viewport{
+  position:fixed;inset:48px 0 0 0;overflow:hidden;touch-action:none;
+  background:
+    radial-gradient(circle at 20% 20%, #E9FF70 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, #FFD9C8 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, #E8E6FF 0%, transparent 60%),
+    var(--paper);
+  background-color:var(--paper);
+}
+.world{
+  position:absolute;left:0;top:0;width:2600px;height:1800px;
+  transform-origin:0 0;
+  will-change:transform;
+}
+/* dot grid */
+.world::before{
+  content:"";position:absolute;inset:-200px;
+  background-image: radial-gradient(circle, #0A0A0B 1.3px, transparent 1.3px);
+  background-size: 28px 28px;
+  opacity:0.07;
+}
+/* connecting threads SVG sits inside world */
+.threads{
+  position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;
+}
+.threads path{fill:none;stroke:#0A0A0B;stroke-width:1.2;opacity:0.12;stroke-dasharray:6 8}
+.threads path.accent{stroke:var(--verm);opacity:0.35;stroke-width:1.6}
+
+/* artifacts base */
+.artifact{
+  position:absolute;z-index:2;
+  transform-origin:center;
+  transition:filter 0.2s;
+}
+.artifact:hover{z-index:10}
+.tape{
+  position:absolute;width:70px;height:22px;
+  background: #F7E99C;
+  opacity:0.9;
+  box-shadow:0 1px 4px rgba(0,0,0,0.15);
+  transform:rotate(-3deg);
+}
+.tape::after{
+  content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg, transparent 0 8px, rgba(0,0,0,0.04) 8px 9px);
+}
+.tape.top{top:-10px;left:50%;transform:translateX(-50%) rotate(-2deg)}
+
+/* manifesto - central */
+.manifesto{
+  left:780px;top:420px;width:760px;
+  background:#0A0A0B;color:#F2EFE6;
+  padding:38px 36px 28px;
+  transform:rotate(-0.6deg);
+  box-shadow: 12px 12px 0 var(--lime), 0 20px 50px rgba(0,0,0,0.25);
+}
+.manifesto::before{
+  content:"";position:absolute;inset:0;pointer-events:none;opacity:0.07;
+  background:repeating-linear-gradient(0deg, transparent 0 2px, white 2px 3px);
+}
+.manifesto-kicker{
+  font-family:"Fragment Mono",monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:var(--lime);
+  display:flex;align-items:center;gap:10px;margin-bottom:18px;
+}
+.manifesto-kicker::before{content:"";width:30px;height:1px;background:var(--lime)}
+.manifesto h1{
+  font-family:"Instrument Serif",serif;font-size:62px;line-height:0.9;letter-spacing:-0.03em;font-weight:400;
+}
+.manifesto h1 em{font-style:italic;color:var(--lime);font-weight:400}
+.manifesto h1 span{font-family:"Syne",sans-serif;font-weight:800;font-size:56px;display:block;letter-spacing:-0.05em;margin-top:6px}
+.manifesto p{
+  margin-top:18px;font-size:15px;line-height:1.5;opacity:0.85;max-width:62ch;
+  font-family:"Space Grotesk",sans-serif;
+}
+.manifesto-meta{
+  margin-top:22px;display:flex;gap:10px;flex-wrap:wrap;
+  font-family:"Fragment Mono",monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;
+}
+.pill{border:1px solid rgba(242,239,230,0.25);padding:7px 10px;border-radius:999px}
+.pill.fill{background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700}
+
+/* sticky - now playing */
+.sticky{
+  left:480px;top:180px;width:260px;
+  background:var(--lime);padding:18px 18px 16px;
+  transform:rotate(-2.5deg);
+  box-shadow:4px 8px 20px rgba(0,0,0,0.12);
+}
+.sticky-corner{
+  position:absolute;right:0;bottom:0;width:32px;height:32px;
+  background:linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.08) 50%);
+}
+.sticky h3{font-family:"Fragment Mono",monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;opacity:0.6}
+.sticky .big{font-family:"Syne",sans-serif;font-weight:800;font-size:22px;line-height:1;letter-spacing:-0.03em;margin-top:8px}
+.sticky .sub{font-family:"Fragment Mono",monospace;font-size:11px;margin-top:6px;line-height:1.4}
+.sticky .eq{display:flex;gap:3px;align-items:end;height:18px;margin-top:12px}
+.sticky .eq i{width:3px;background:var(--ink);display:block;animation:eq 0.6s infinite alternate}
+.sticky .eq i:nth-child(2){animation-delay:0.15s;height:14px}
+.sticky .eq i:nth-child(3){animation-delay:0.3s;height:8px}
+.sticky .eq i:nth-child(4){animation-delay:0.1s;height:16px}
+@keyframes eq{from{height:4px}to{height:18px}}
+
+/* polaroids - work */
+.polaroid{
+  width:300px;background:white;padding:12px 12px 18px;
+  box-shadow:0 6px 18px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.1);
+}
+.polaroid-img{
+  width:100%;height:210px;overflow:hidden;background:#111;position:relative;
+}
+.polaroid-img img{width:100%;height:100%;object-fit:cover;filter:contrast(1.05) saturate(1.1)}
+.polaroid-img::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.25));
+  pointer-events:none;
+}
+.polaroid-caption{padding-top:14px}
+.polaroid-caption h4{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:14px;letter-spacing:-0.02em;display:flex;justify-content:space-between;align-items:center}
+.polaroid-caption h4 span{font-family:"Fragment Mono",monospace;font-size:9px;opacity:0.5;letter-spacing:0.08em}
+.polaroid-caption p{font-family:"Fragment Mono",monospace;font-size:10px;line-height:1.5;opacity:0.6;margin-top:6px}
+.polaroid-note{
+  position:absolute;right:-18px;top:22px;background:var(--ink);color:white;
+  font-family:"Fragment Mono",monospace;font-size:9px;letter-spacing:0.08em;
+  padding:6px 8px;transform:rotate(3deg);
+}
+.work-1{left:1480px;top:140px;transform:rotate(2.2deg)}
+.work-2{left:1560px;top:540px;transform:rotate(-1.8deg)}
+.work-3{left:1380px;top:880px;transform:rotate(1.4deg)}
+
+/* recipe card - process */
+.recipe{
+  left:620px;top:940px;width:520px;
+  background:#FFFDF4;border:1px solid #E6E0C8;
+  padding:0;transform:rotate(0.8deg);
+  box-shadow:6px 10px 30px rgba(0,0,0,0.08);
+}
+.recipe-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px dashed #D8D0B0;
+  font-family:"Fragment Mono",monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;
+}
+.recipe-head b{font-size:11px}
+.recipe-body{padding:22px 24px}
+.recipe h3{font-family:"Instrument Serif",serif;font-size:28px;line-height:1;font-weight:400}
+.recipe h3 i{font-style:italic;color:var(--verm)}
+.recipe ol{margin-top:16px;list-style:none;counter-reset:steps}
+.recipe li{counter-increment:steps;display:grid;grid-template-columns:36px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid #F0EAD6}
+.recipe li:last-child{border-bottom:none}
+.recipe li::before{
+  content:counter(steps, decimal-leading-zero);
+  font-family:"Fragment Mono",monospace;font-size:11px;opacity:0.4;
+  width:32px;height:32px;border:1px solid #0A0A0B;border-radius:50%;display:grid;place-items:center;
+}
+.recipe li strong{font-size:13px;letter-spacing:-0.01em}
+.recipe li p{font-family:"Fragment Mono",monospace;font-size:10px;opacity:0.6;line-height:1.5;margin-top:4px}
+
+/* capabilities ticket */
+.ticket{
+  left:1180px;top:1220px;width:320px;
+  background:white;border:1px dashed #0A0A0B;
+  transform:rotate(-1.2deg);
+  box-shadow:0 4px 14px rgba(0,0,0,0.08);
+}
+.ticket-head{background:var(--ink);color:white;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+.ticket-head h4{font-family:"Fragment Mono",monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase}
+.ticket-head span{font-size:10px;opacity:0.6}
+.ticket-body{padding:16px 14px}
+.ticket-body ul{list-style:none;display:flex;flex-wrap:wrap;gap:8px}
+.ticket-body li{
+  font-family:"Space Grotesk",sans-serif;font-size:11px;font-weight:700;
+  border:1px solid #0A0A0B;padding:6px 10px;border-radius:999px;
+  background:white;
+}
+.ticket-body li.alt{background:var(--acid)}
+.ticket-body li.violet{background:var(--violet);color:white;border-color:var(--violet)}
+.ticket-foot{border-top:1px dashed #0A0A0B;padding:10px 14px;display:flex;justify-content:space-between;font-family:"Fragment Mono",monospace;font-size:9px;opacity:0.5}
+
+/* badges - team */
+.badges{left:280px;top:700px;width:360px;transform:rotate(1.1deg)}
+.badges-title{
+  background:var(--violet);color:white;display:inline-block;
+  font-family:"Fragment Mono",monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;
+  padding:6px 10px;transform:rotate(-1deg);
+}
+.badge{
+  background:white;border:1px solid #0A0A0B;padding:12px;display:flex;gap:12px;align-items:center;
+  margin-top:10px;box-shadow:3px 4px 0 #0A0A0B;
+  transform:rotate(var(--r));
+}
+.badge:nth-child(2){--r:-0.6deg}
+.badge:nth-child(3){--r:0.8deg}
+.badge:nth-child(4){--r:-0.4deg}
+.badge-photo{width:52px;height:52px;background:#0A0A0B;flex-shrink:0;overflow:hidden;filter:grayscale(1) contrast(1.2)}
+.badge-photo img{width:100%;height:100%;object-fit:cover}
+.badge-info h5{font-size:12px;letter-spacing:-0.02em}
+.badge-info p{font-family:"Fragment Mono",monospace;font-size:9px;opacity:0.6;margin-top:2px}
+.badge-tag{margin-left:auto;font-family:"Fragment Mono",monospace;font-size:9px;background:var(--lime);padding:4px 6px;border-radius:999px;font-weight:700}
+
+/* terminal - contact */
+.terminal{
+  left:1900px;top:320px;width:460px;
+  background:#0A0A0B;color:#D6FF2A;
+  border:1px solid #222;
+  transform:rotate(-0.4deg);
+  box-shadow:0 20px 50px rgba(0,0,0,0.35), 8px 8px 0 var(--verm);
+  overflow:hidden;
+}
+.term-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;border-bottom:1px solid #1a1a1a;
+  font-family:"Fragment Mono",monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#888;
+}
+.term-dots{display:flex;gap:6px}
+.term-dots i{width:10px;height:10px;border-radius:50%;display:block}
+.term-dots i:nth-child(1){background:#FF5F57}
+.term-dots i:nth-child(2){background:#FFBD2E}
+.term-dots i:nth-child(3){background:#28C940}
+.term-body{padding:18px 18px 16px}
+.term-body h3{font-family:"Instrument Serif",serif;font-size:28px;line-height:1;color:#F2EFE6}
+.term-body h3 em{color:var(--lime);font-style:italic}
+.term-body p{font-family:"Fragment Mono",monospace;font-size:11px;line-height:1.6;color:#8A8F7A;margin-top:10px}
+.term-form{margin-top:16px;display:grid;gap:10px}
+.term-form input,.term-form textarea{
+  width:100%;background:#111;color:#F2EFE6;border:1px solid #222;
+  padding:10px 12px;font-family:"Fragment Mono",monospace;font-size:11px;
+  outline:none;
+}
+.term-form input:focus,.term-form textarea:focus{border-color:var(--lime)}
+.term-form button{
+  background:var(--lime);color:var(--ink);border:none;
+  padding:12px;font-family:"Fragment Mono",monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;
+  cursor:pointer;
+}
+.term-form button:hover{background:white}
+.term-foot{padding:10px 14px;border-top:1px solid #1a1a1a;display:flex;justify-content:space-between;font-family:"Fragment Mono",monospace;font-size:9px;color:#555}
+
+/* colophon */
+.colophon{
+  left:1180px;top:260px;width:320px;
+  background:#FFF9E6;border:1px solid #E6D9A8;
+  padding:14px 16px;transform:rotate(0.6deg);
+  font-family:"Fragment Mono",monospace;font-size:10px;line-height:1.6;
+  box-shadow:2px 4px 12px rgba(0,0,0,0.06);
+}
+.colophon h4{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px}
+
+/* big words */
+.big-word{
+  position:absolute;z-index:0;
+  font-family:"Syne",sans-serif;font-weight:800;
+  color:transparent;-webkit-text-stroke:1px rgba(10,10,11,0.08);
+  line-height:1;pointer-events:none;user-select:none;
+  font-size:140px;letter-spacing:-0.06em;
+}
+.bw-vibe{left:200px;top:1080px;transform:rotate(-90deg);transform-origin:0 0}
+.bw-code{left:1960px;top:980px;transform:rotate(90deg);transform-origin:0 0;color:rgba(122,92,255,0.06);-webkit-text-stroke-color:rgba(122,92,255,0.15)}
+
+/* stamps */
+.stamp{
+  position:absolute;width:110px;height:110px;border:2px dashed var(--verm);border-radius:50%;
+  display:grid;place-items:center;color:var(--verm);
+  font-family:"Fragment Mono",monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;text-align:center;
+  transform:rotate(-12deg);opacity:0.8;
+}
+.stamp b{font-size:13px;display:block;line-height:1}
+
+/* three canvas */
+.three-wrap{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
+}
+.three-wrap canvas{width:100%;height:100%;display:block;opacity:0.9}
+
+/* minimap */
+.minimap{
+  position:fixed;right:16px;bottom:16px;z-index:40;
+  width:190px;height:132px;background:rgba(242,239,230,0.9);backdrop-filter:blur(8px);
+  border:1px solid #0A0A0B;box-shadow:4px 4px 0 #0A0A0B;
+  padding:8px;
+}
+.minimap-title{font-family:"Fragment Mono",monospace;font-size:8px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.5;display:flex;justify-content:space-between}
+.minimap-canvas{margin-top:6px;width:100%;height:92px;background:white;border:1px solid #DDD;position:relative;overflow:hidden}
+.mini-dot{position:absolute;width:6px;height:6px;background:var(--ink);border-radius:50%}
+.mini-viewport{position:absolute;border:1px solid var(--verm);background:rgba(255,61,13,0.08);pointer-events:none}
+
+/* loader */
+.loader{
+  position:fixed;inset:0;z-index:100;background:#0A0A0B;color:#F2EFE6;
+  display:grid;place-items:center;transition:transform 0.8s cubic-bezier(0.85,0,0.15,1), opacity 0.5s;
+}
+.loader-inner{width:min(560px, 90vw);text-align:center}
+.loader h2{font-family:"Syne",sans-serif;font-weight:800;font-size:42px;letter-spacing:-0.04em;line-height:1}
+.loader h2 em{font-family:"Instrument Serif",serif;font-style:italic;font-weight:400;color:var(--lime)}
+.loader-bar{height:1px;background:#222;margin:18px 0;overflow:hidden}
+.loader-bar i{display:block;height:100%;width:0%;background:var(--lime);transition:width 0.4s}
+.loader-meta{display:flex;justify-content:space-between;font-family:"Fragment Mono",monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.5}
+
+/* hover lift */
+.artifact{cursor:pointer}
+.artifact:hover{filter:brightness(1.02)}
+.artifact:active{cursor:grabbing}
+
+/* responsive */
+@media(max-width:900px){
+  .viewport{inset:48px 0 0 0}
+  .world{width:1200px;height:2400px}
+  .topbar-right .coord,.topbar-right .drag-hint{display:none}
+  .manifesto{left:24px;top:120px;width:340px}
+  .manifesto h1{font-size:38px}
+  .manifesto h1 span{font-size:34px}
+  .sticky{left:24px;top:560px}
+  .badges{left:24px;top:860px}
+  .recipe{left:24px;top:1180px;width:340px}
+  .colophon{left:24px;top:1620px}
+  .ticket{left:24px;top:1780px}
+  .work-1{left:24px;top:1980px}
+  .work-2{left:24px;top:2280px}
+  .work-3{left:24px;top:2580px}
+  .terminal{left:24px;top:2900px;width:340px}
+  .big-word{display:none}
+  .minimap{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="loader" id="loader">
+  <div class="loader-inner">
+    <div style="font-family:'Fragment Mono',monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.5;margin-bottom:14px">Est. 2024 — After Hours — Worldwide</div>
+    <h2>DUSK <em>Atelier</em></h2>
+    <div class="loader-bar"><i id="loadbar"></i></div>
+    <div class="loader-meta"><span>Pinning studio wall...</span><span id="loadpct">0%</span></div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="logo">DUSK <i>atelier</i></div>
+    <div class="live"><span class="live-dot"></span> Studio open — accepting 2 projects for Nov</div>
+  </div>
+  <div class="topbar-right">
+    <div class="coord" id="coords">X: 0 &nbsp; Y: 0 &nbsp; ZOOM 100%</div>
+    <div class="drag-hint"><b>↔</b> Drag wall to explore</div>
+    <button class="cta-top" id="summonBtn">Summon us →</button>
+  </div>
+</header>
+
+<div class="viewport" id="viewport">
+  <div class="world" id="world">
+    <div class="three-wrap" id="threeWrap"></div>
+
+    <svg class="threads" viewBox="0 0 2600 1800" preserveAspectRatio="none">
+      <path d="M610 260 C 820 300 900 420 1080 520" />
+      <path class="accent" d="M1140 540 C 1300 540 1420 400 1540 280" />
+      <path d="M1150 1050 C 1200 1150 1350 1200 1520 1180" />
+      <path d="M650 880 C 620 980 620 1120 720 1180" />
+      <path d="M880 760 C 1150 760 1400 880 1660 620" />
+      <path class="accent" d="M1440 480 C 1600 500 1780 480 1980 420" />
+      <path d="M1680 900 C 1750 850 1860 700 1920 500" />
+      <path d="M460 780 C 380 820 300 900 320 1020" />
+    </svg>
+
+    <div class="big-word bw-vibe">VIBE</div>
+    <div class="big-word bw-code">CODE</div>
+
+    <!-- sticky now playing -->
+    <div class="artifact sticky" data-depth="0.1">
+      <div class="tape top"></div>
+      <h3>● On air — Studio Radio</h3>
+      <div class="big">Bliss on loop</div>
+      <div class="sub">We code to this. 4h mix — no skips, no talking. Just hum.</div>
+      <div class="eq"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div style="margin-top:10px;display:flex;gap:6px">
+        <span style="font-family:'Fragment Mono',monospace;font-size:9px;border:1px solid #0A0A0B;padding:4px 8px;border-radius:999px">▶ Play on wall</span>
+        <span style="font-family:'Fragment Mono',monospace;font-size:9px;opacity:0.5;align-self:center">00:47 / 4:00:00</span>
+      </div>
+      <div class="sticky-corner"></div>
+    </div>
+
+    <!-- manifesto central -->
+    <div class="artifact manifesto" id="manifest">
+      <div class="tape top" style="background:#D6FF2A"></div>
+      <div class="manifesto-kicker">Vibe Code Atelier — No.04</div>
+      <h1>We don't build <em>apps.</em> <span>We make the internet</span> <em>feel</em> something.</h1>
+      <p>DUSK is a 5-person studio that works after hours. No sprints. No tickets. No discovery workshops. We sit with your idea until it starts to hum — then we build it until it sings. Software with goosebumps. Websites that feel like places.</p>
+      <div class="manifesto-meta">
+        <span class="pill fill">Available Nov → Dec</span>
+        <span class="pill">Remote, sync-async</span>
+        <span class="pill">→ Manifesto.pdf</span>
+      </div>
+    </div>
+
+    <!-- colophon -->
+    <div class="artifact colophon">
+      <div class="tape top" style="width:50px;height:18px;background:#B9B6FF;left:20%"></div>
+      <h4>Colophon — Who is Dusk?</h4>
+      <p>Founded on a rainy Tuesday in Lisbon. Named after the hour when ideas finally stop pretending to be sensible. Clients: Are.na, Poolsuite, Linear's weird cousin. Tools: code, taste, and a lot of discarded drafts.</p>
+      <div style="margin-top:10px;display:flex;gap:6px">
+        <span style="border:1px solid #0A0A0B;padding:3px 6px;font-size:9px;background:white">Awwwards ×2</span>
+        <span style="border:1px solid #0A0A0B;padding:3px 6px;font-size:9px;background:#D6FF2A">Site of the Day</span>
+      </div>
+    </div>
+
+    <!-- badges -->
+    <div class="artifact badges">
+      <div class="badges-title">Studio ghosts — 5 humans, 1 dog</div>
+      <div class="badge">
+        <div class="badge-photo"><img src="https://i.pravatar.cc/200?img=15" alt=""></div>
+        <div class="badge-info"><h5>Mira — Creative Code</h5><p>ex-Stripe, ex-burnout</p></div>
+        <div class="badge-tag">Lisbon</div>
+      </div>
+      <div class="badge">
+        <div class="badge-photo"><img src="https://i.pravatar.cc/200?img=32" alt=""></div>
+        <div class="badge-info"><h5>Jules — Motion & 3D</h5><p>makes divs feel</p></div>
+        <div class="badge-tag">Paris</div>
+      </div>
+      <div class="badge">
+        <div class="badge-photo"><img src="https://i.pravatar.cc/200?img=12" alt=""></div>
+        <div class="badge-info"><h5>Kai — Product Weirding</h5><p>your PM's PM</p></div>
+        <div class="badge-tag">Tokyo</div>
+      </div>
+    </div>
+
+    <!-- process recipe -->
+    <div class="artifact recipe">
+      <div class="tape top" style="background:#FFCAC2"></div>
+      <div class="recipe-head"><span>Recipe card — Do not photocopy</span><b>01 / Process</b></div>
+      <div class="recipe-body">
+        <h3>How we work <i>when we don't work.</i></h3>
+        <ol>
+          <li><div><strong>Listen until it hurts</strong><p>We don't take briefs. We take walks, calls at midnight, Figma graveyards. We learn what you almost said.</p></div></li>
+          <li><div><strong>Jam, don't spec</strong><p>48h prototype in public. Ugly, alive, clickable. If it doesn't give you chills, we kill it.</p></div></li>
+          <li><div><strong>Polish like a record</strong><p>Then we obsess over every frame. 60fps or it didn't happen. Ships with lore, not docs.</p></div></li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- ticket capabilities -->
+    <div class="artifact ticket">
+      <div class="ticket-head"><h4>Admit one — Capabilities</h4><span>№ 00482</span></div>
+      <div class="ticket-body">
+        <ul>
+          <li class="alt">Websites that feel like films</li>
+          <li>Creative dev</li>
+          <li class="violet">Three.js / WebGL</li>
+          <li>Brand + type</li>
+          <li>Product prototyping</li>
+          <li>Design systems w/ soul</li>
+          <li>eCommerce — not boring</li>
+          <li class="alt">AI as material</li>
+        </ul>
+      </div>
+      <div class="ticket-foot"><span>Not for sale</span><span>Tear here ✂︎</span></div>
+    </div>
+
+    <!-- work polaroids -->
+    <div class="artifact polaroid work-1">
+      <div class="polaroid-note">↗ Live</div>
+      <div class="polaroid-img"><img src="https://picsum.photos/seed/lagoon/600/700" alt=""></div>
+      <div class="polaroid-caption">
+        <h4>NEON LAGOON <span>2024 →</span></h4>
+        <p>Poolsuite for the apocalypse. A resort that never existed, built in WebGL. 12k concurrent loungers.</p>
+        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:9px;border:1px solid #0A0A0B;padding:4px 7px;border-radius:999px">WebGL</span><span style="font-size:9px;border:1px solid #0A0A0B;padding:4px 7px;border-radius:999px;background:var(--lime)">Case study →</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="artifact polaroid work-2">
+      <div class="polaroid-img"><img src="https://picsum.photos/seed/oracle2/600/700" alt=""></div>
+      <div class="polaroid-caption">
+        <h4>ORACLE <span>2024</span></h4>
+        <p>Writing tool that gaslights you (affectionately). 40k writers. Partnered with Are.na.</p>
+        <div style="margin-top:10px;display:flex;gap:6px"><span style="font-size:9px;border:1px solid #0A0A0B;padding:4px 7px;border-radius:999px">Next.js</span><span style="font-size:9px;border:1px solid #0A0A0B;padding:4px 7px;border-radius:999px">AI</span></div>
+      </div>
+    </div>
+
+    <div class="artifact polaroid work-3">
+      <div class="polaroid-note" style="background:var(--lime);color:#0A0A0B">★ Award</div>
+      <div class="polaroid-img"><img src="https://picsum.photos/seed/mouth99/600/700" alt=""></div>
+      <div class="polaroid-caption">
+        <h4>MOUTH <span>2023</span></h4>
+        <p>Voice journal that draws your feelings. No login, no cloud — just you and the void.</p>
+      </div>
+    </div>
+
+    <!-- terminal -->
+    <div class="artifact terminal" id="contact">
+      <div class="term-head">
+        <div class="term-dots"><i></i><i></i><i></i></div>
+        <span>Summon — DUSK ATELIER</span>
+        <span>● Online</span>
+      </div>
+      <div class="term-body">
+        <h3>Don't send a brief. <em>Send a feeling.</em></h3>
+        <p>> We reply within 8 hours. Or we send a voice note if we're feeling it. Projects from €25k. No RFPs. Two slots left for 2024.</p>
+        <form class="term-form" onsubmit="return handleSend(event)">
+          <input placeholder="You are... (name / studio)" required>
+          <input placeholder="Reach you at... (email)" type="email" required>
+          <textarea rows="3" placeholder="What should exist that doesn't? Describe it like a dream..."></textarea>
+          <button type="submit">Transmit →</button>
+        </form>
+      </div>
+      <div class="term-foot"><span>Encryption: vibe-based</span><span>Est. response — Tonight</span></div>
+    </div>
+
+    <div class="stamp" style="left:1720px;top:980px"><span><b>APPROVED</b>BY TASTE</span></div>
+    <div class="stamp" style="left:400px;top:1240px;width:90px;height:90px;font-size:8px"><span><b>NO</b>AI SLOP</span></div>
+
+  </div>
+</div>
+
+<div class="minimap" id="minimap">
+  <div class="minimap-title"><span>Map — Drag around</span><span id="mapZoom">100%</span></div>
+  <div class="minimap-canvas" id="miniCanvas"></div>
+</div>
+
+<script type="module">
+// loader
+let pct=0;
+const bar=document.getElementById('loadbar'), pctEl=document.getElementById('loadpct'), loader=document.getElementById('loader');
+const iv=setInterval(()=>{pct+=Math.random()*28; if(pct>=100){pct=100;clearInterval(iv); bar.style.width='100%'; pctEl.textContent='100%'; setTimeout(()=>{loader.style.transform='translateY(-100%)'; loader.style.opacity='0';},400)} else {bar.style.width=pct+'%'; pctEl.textContent=Math.round(pct)+'%'}},120);
+
+// draggable world
+const viewport=document.getElementById('viewport');
+const world=document.getElementById('world');
+const coordsEl=document.getElementById('coords');
+const mapZoomEl=document.getElementById('mapZoom');
+
+let pos={x:-460, y:-90};
+let scale=1;
+let isDragging=false, start={x:0,y:0}, origin={x:0,y:0};
+let vel={x:0,y:0}, lastDelta={x:0,y:0}, inertiaRaf=0;
+
+function clampPos(){
+  // allow panning, limits
+  const vw=viewport.clientWidth, vh=viewport.clientHeight;
+  const ww=world.offsetWidth*scale, wh=world.offsetHeight*scale;
+  const minX=vw-ww-20, maxX=40;
+  const minY=vh-wh-20, maxY=40;
+  // soft clamp - allow some overdrag then bounce
+}
+function apply(){
+  world.style.transform=`translate(${pos.x}px, ${pos.y}px) scale(${scale})`;
+  coordsEl.textContent=`X: ${Math.round(-pos.x)}  Y: ${Math.round(-pos.y)}  ZOOM ${Math.round(scale*100)}%`;
+  if(mapZoomEl) mapZoomEl.textContent=Math.round(scale*100)+'%';
+  updateMinimap();
+}
+
+viewport.addEventListener('pointerdown', e=>{
+  if(e.target.closest('input, textarea, button')) return;
+  cancelAnimationFrame(inertiaRaf);
+  isDragging=true; document.body.classList.add('dragging');
+  start={x:e.clientX, y:e.clientY}; origin={...pos};
+  vel={x:0,y:0}; lastDelta={x:0,y:0};
+  viewport.setPointerCapture(e.pointerId);
+});
+viewport.addEventListener('pointermove', e=>{
+  if(!isDragging) return;
+  const dx=e.clientX-start.x, dy=e.clientY-start.y;
+  pos.x=origin.x+dx; pos.y=origin.y+dy;
+  vel={x:dx-lastDelta.x, y:dy-lastDelta.y};
+  lastDelta={x:dx, y:dy};
+  apply();
+});
+function stopDrag(){
+  if(!isDragging) return;
+  isDragging=false; document.body.classList.remove('dragging');
+  // inertia
+  let vx=vel.x*0.9, vy=vel.y*0.9;
+  function inertia(){
+    if(Math.abs(vx)<0.1 && Math.abs(vy)<0.1) return;
+    pos.x+=vx; pos.y+=vy;
+    vx*=0.94; vy*=0.94;
+    apply();
+    inertiaRaf=requestAnimationFrame(inertia);
+  }
+  inertia();
+}
+viewport.addEventListener('pointerup', stopDrag);
+viewport.addEventListener('pointercancel', stopDrag);
+viewport.addEventListener('pointerleave', stopDrag);
+
+viewport.addEventListener('wheel', e=>{
+  if(e.ctrlKey || e.metaKey){
+    e.preventDefault();
+    const delta = -e.deltaY*0.0012;
+    const newScale=Math.min(1.35, Math.max(0.55, scale+delta));
+    // zoom towards cursor
+    const rect=viewport.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const wx=(mx - pos.x)/scale, wy=(my - pos.y)/scale;
+    scale=newScale;
+    pos.x=mx - wx*scale;
+    pos.y=my - wy*scale;
+    apply();
+  } else {
+    pos.x -= e.deltaX; pos.y -= e.deltaY;
+    apply();
+    e.preventDefault();
+  }
+},{passive:false});
+
+// parallax on mouse
+let mouse={x:0.5,y:0.5};
+viewport.addEventListener('mousemove', e=>{
+  const r=viewport.getBoundingClientRect();
+  mouse.x=(e.clientX-r.left)/r.width;
+  mouse.y=(e.clientY-r.top)/r.height;
+  document.querySelectorAll('.artifact').forEach(el=>{
+    const d=parseFloat(el.dataset.depth||0);
+    if(!d) return;
+    const tx=(mouse.x-0.5)*d*80, ty=(mouse.y-0.5)*d*80;
+    el.style.translate=`${tx}px ${ty}px`;
+  });
+});
+
+// minimap
+const miniCanvas=document.getElementById('miniCanvas');
+const items=[
+  {x:610,y:260,w:260,h:160,label:'radio',color:'#D6FF2A'},
+  {x:780,y:420,w:760,h:300,color:'#0A0A0B'},
+  {x:1180,y:260,w:320,h:140,color:'#FFF9E6'},
+  {x:280,y:700,w:360,h:260,color:'#7A5CFF'},
+  {x:620,y:940,w:520,h:420,color:'#FFFDF4'},
+  {x:1180,y:1220,w:320,h:220,color:'white'},
+  {x:1480,y:140,w:300,h:320,color:'white'},
+  {x:1560,y:540,w:300,h:320,color:'white'},
+  {x:1380,y:880,w:300,h:320,color:'white'},
+  {x:1900,y:320,w:460,h:420,color:'#0A0A0B'},
+];
+items.forEach(it=>{
+  const d=document.createElement('div');
+  d.style.cssText=`position:absolute;left:${it.x/2600*100}%;top:${it.y/1800*100}%;width:${it.w/2600*100}%;height:${it.h/1800*100}%;background:${it.color};border:1px solid rgba(0,0,0,0.15);`;
+  miniCanvas.appendChild(d);
+});
+const miniVp=document.createElement('div');
+miniVp.className='mini-viewport';
+miniCanvas.appendChild(miniVp);
+function updateMinimap(){
+  const vw=viewport.clientWidth/scale, vh=(viewport.clientHeight)/scale;
+  const ww=2600, wh=1800;
+  const left=(-pos.x/scale)/ww*100, top=(-pos.y/scale)/wh*100;
+  const w=vw/ww*100, h=vh/wh*100;
+  miniVp.style.left=left+'%'; miniVp.style.top=top+'%';
+  miniVp.style.width=w+'%'; miniVp.style.height=h+'%';
+}
+miniCanvas.addEventListener('click', e=>{
+  const r=miniCanvas.getBoundingClientRect();
+  const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+  pos.x= -x*2600*scale + viewport.clientWidth/2;
+  pos.y= -y*1800*scale + viewport.clientHeight/2;
+  apply();
+});
+
+// initial paint: must run after the minimap nodes exist, since updateMinimap() uses them
+apply();
+
+// THREE - subtle floating blobs and grain field
+// Loaded on demand: if the CDN is unreachable, only the 3D background is skipped, not the whole site
+async function initThree(){
+  let THREE;
+  try{
+    THREE = await import('three');
+  }catch(err){
+    console.warn('three.js failed to load, 3D background disabled', err);
+    return;
+  }
+  const wrap=document.getElementById('threeWrap');
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(55, wrap.clientWidth/wrap.clientHeight, 0.1, 1000);
+  camera.position.set(0,0,6);
+  const renderer=new THREE.WebGLRenderer({alpha:true, antialias:true});
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  wrap.appendChild(renderer.domElement);
+
+  // create blob cluster
+  const group=new THREE.Group();
+  scene.add(group);
+  const geo=new THREE.IcosahedronGeometry(1, 2);
+  const mat1=new THREE.MeshStandardMaterial({color:0xD6FF2A, wireframe:true, transparent:true, opacity:0.25});
+  const mat2=new THREE.MeshStandardMaterial({color:0x7A5CFF, wireframe:true, transparent:true, opacity:0.18});
+  const mat3=new THREE.MeshBasicMaterial({color:0xFF3D0D, wireframe:true, transparent:true, opacity:0.18});
+  const b1=new THREE.Mesh(geo, mat1); b1.scale.set(1.4,1.4,1.4); b1.position.set(-2.2,0.8,0); group.add(b1);
+  const b2=new THREE.Mesh(geo, mat2); b2.scale.set(1.0,1.0,1.0); b2.position.set(2.0,-0.6,0); group.add(b2);
+  const b3=new THREE.Mesh(new THREE.TorusGeometry(0.9,0.22,16,40), mat3); b3.position.set(0, -1.2, -1); b3.rotation.x=0.6; group.add(b3);
+  const ptsGeo=new THREE.BufferGeometry();
+  const count=400;
+  const posArr=new Float32Array(count*3);
+  for(let i=0;i<count;i++){ posArr[i*3]= (Math.random()-0.5)*10; posArr[i*3+1]=(Math.random()-0.5)*6; posArr[i*3+2]=(Math.random()-0.5)*4 -1; }
+  ptsGeo.setAttribute('position', new THREE.BufferAttribute(posArr,3));
+  const ptsMat=new THREE.PointsMaterial({color:0x0A0A0B, size:0.02, transparent:true, opacity:0.35});
+  const pts=new THREE.Points(ptsGeo, ptsMat); group.add(pts);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const dir=new THREE.DirectionalLight(0xffffff,1); dir.position.set(2,3,4); scene.add(dir);
+
+  function onResize(){ const w=wrap.clientWidth, h=wrap.clientHeight; camera.aspect=w/h; camera.updateProjectionMatrix(); renderer.setSize(w,h); }
+  window.addEventListener('resize', onResize);
+
+  let t=0;
+  function animate(){
+    requestAnimationFrame(animate);
+    t+=0.008;
+    b1.rotation.y+=0.004; b1.rotation.x+=0.002; b1.position.y=0.8+Math.sin(t*0.7)*0.3;
+    b2.rotation.y-=0.005; b2.rotation.z+=0.003;
+    b3.rotation.y+=0.006; b3.rotation.z=Math.sin(t)*0.2;
+    // parallax group follows mouse
+    group.position.x=(mouse.x-0.5)*0.6;
+    group.position.y=-(mouse.y-0.5)*0.4;
+    group.rotation.y=(mouse.x-0.5)*0.2;
+    renderer.render(scene,camera);
+  }
+  animate();
+}
+initThree();
+
+// keyboard nudge
+window.addEventListener('keydown', e=>{
+  if(e.target.closest('input, textarea')) return;
+  const step=40;
+  if(e.key==='ArrowLeft') pos.x+=step;
+  if(e.key==='ArrowRight') pos.x-=step;
+  if(e.key==='ArrowUp') pos.y+=step;
+  if(e.key==='ArrowDown') pos.y-=step;
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) apply();
+});
+
+document.getElementById('summonBtn').addEventListener('click', ()=>{
+  // pan to contact
+  pos.x= -1900*scale + viewport.clientWidth/2 - 120;
+  pos.y= -320*scale + viewport.clientHeight/2 - 100;
+  world.style.transition='transform 1.1s cubic-bezier(0.16,1,0.3,1)';
+  apply();
+  setTimeout(()=> world.style.transition='',1200);
+});
+
+// fake send
+window.handleSend=(e)=>{
+  e.preventDefault();
+  const btn=e.target.querySelector('button');
+  btn.textContent='Transmitting…';
+  setTimeout(()=>{btn.textContent='✓ Sent — Wait for the hum'; btn.style.background='white';},900);
+  return false;
+};
+
+// random wobble on artifacts
+document.querySelectorAll('.artifact').forEach(el=>{
+  el.addEventListener('mouseenter', ()=>{
+    el.animate([{transform:'rotate(0deg) scale(1)'},{transform:'rotate(0.6deg) scale(1.02)'},{transform:'rotate(-0.4deg) scale(1.01)'},{transform:'rotate(0deg) scale(1.01)'}],{duration:400, easing:'ease-out'});
+  });
+});
+
+// autoplay center focus on load end
+setTimeout(()=>{
+  pos={x:-620, y:-260}; scale=0.95; apply();
+  // entrance stagger
+  document.querySelectorAll('.artifact').forEach((el,i)=>{
+    el.animate([{opacity:0, transform:'translateY(20px) scale(0.97)'},{opacity:1, transform:'translateY(0) scale(1)'}],{duration:700, delay:i*55, easing:'cubic-bezier(0.16,1,0.3,1)', fill:'backwards'});
+  });
+}, 900);
+
+</script>
+</body>
+</html>

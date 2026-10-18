@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Low Poly Mario — Course 1-1</title>
+<meta name="description" content="Low Poly Mario — a Minecraft-inspired voxel platformer covering World 1-1.">
+<style>
+  :root{ --hud-bg:#263B36; --hud-text:#FFF6D9; --accent:#E8B73A; }
+  *{box-sizing:border-box}
+  html,body{height:100%; margin:0; background:#9DD8ED; font-family: ui-sans-system, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; color:#1a2e2a}
+  #app{max-width:1060px; margin:0 auto; min-height:100dvh; display:flex; flex-direction:column; }
+  header.hud{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:var(--hud-bg); color:var(--hud-text); padding:8px 10px; flex-wrap:wrap;
+    border-bottom:3px solid #1c2e2a; position:relative; z-index:3;
+  }
+  .hud-group{display:flex; gap:14px; align-items:center; flex-wrap:wrap}
+  .hud-item{display:flex; flex-direction:column; line-height:1}
+  .hud-label{font-size:10px; letter-spacing:.08em; opacity:.8; text-transform:uppercase}
+  .hud-val{font-weight:800; font-size:15px; letter-spacing:.02em}
+  .hud-val.warn{color:#ff6b6b; animation:blink .45s steps(2) infinite}
+  @keyframes blink{50%{opacity:.35}}
+  .power-fire{color:#FF6B35} .power-star{color:#FFD600; text-shadow:0 0 6px #fff}
+  .progress{height:6px; background:#1c2e2a; flex:1 1 120px; min-width:90px; border-radius:999px; overflow:hidden; border:1px solid #2f4a45}
+  .progress>i{display:block; height:100%; background:var(--accent); width:0%; transition:width .2s linear}
+  .hud-actions{display:flex; gap:8px; align-items:center}
+  .btn{
+    appearance:none; border:1px solid #2f4a45; background:#2e4d47; color:var(--hud-text);
+    padding:7px 10px; border-radius:10px; font-weight:700; cursor:pointer; font-size:13px;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:#E8B73A; color:#2b2410; border-color:#c99a28}
+  #canvas-wrap{
+    position:relative; flex:1 1 auto; min-height:360px; background:#9DD8ED;
+    overflow:hidden; display:flex; align-items:stretch;
+  }
+  #game{width:100%; height:100%; display:block; outline:none; touch-action:none}
+  #popup-layer{position:absolute; inset:0; pointer-events:none}
+  .world-popup{
+    position:absolute; transform:translate(-50%,-50%); font-weight:900; font-size:13px;
+    color:#fff; text-shadow:0 1px 0 #000, 0 0 6px #000; background:rgba(0,0,0,.28); padding:2px 6px; border-radius:8px;
+    white-space:nowrap;
+  }
+  #overlay{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(1200px 700px at 50% 30%, rgba(255,255,255,.58), rgba(157,216,237,.85) 55%, rgba(38,59,54,.22));
+    backdrop-filter: blur(2px);
+    padding:16px;
+  }
+  #overlay.hidden{display:none}
+  .overlay-card{
+    background:var(--hud-bg); color:var(--hud-text); border:2px solid #1c2e2a; border-radius:18px;
+    padding:18px 16px; width:min(520px, 96vw); text-align:center; box-shadow:0 12px 30px rgba(0,0,0,.25);
+    max-height:86vh; overflow:auto;
+  }
+  .overlay-card h1{margin:0 0 6px; font-size:26px; letter-spacing:.02em}
+  .overlay-card p{margin:0 0 12px; opacity:.92; font-size:14px; line-height:1.45}
+  #overlay-btn{width:100%; padding:10px 12px; font-size:16px}
+  .controls-hint{font-size:12px; opacity:.75; margin-top:8px; line-height:1.4}
+  #touch-controls{
+    display:flex; gap:8px; justify-content:space-between; align-items:center;
+    background:#263B36; color:#FFF6D9; padding:8px; border-top:1px solid #1c2e2a;
+  }
+  .t-group{display:flex; gap:8px}
+  .t-btn{
+    width:54px; height:54px; border-radius:14px; border:1.5px solid #2f4a45; background:#2e4d47; color:#FFF6D9;
+    font-weight:900; font-size:18px; display:flex; align-items:center; justify-content:center;
+    user-select:none; -webkit-user-select:none; touch-action:none;
+  }
+  .t-btn:active{filter:brightness(1.15)}
+  @media (max-width:720px){
+    header.hud{padding:6px 8px}
+    .hud-group{gap:10px}
+    .hud-val{font-size:14px}
+  }
+  @media (min-width:880px){
+    #canvas-wrap{min-height:520px}
+    .t-btn{width:60px; height:60px}
+  }
+  /* hide touch on pointer-fine desktops but keep accessible */
+  @media (hover:hover) and (pointer:fine){
+    /* keep visible but subtle */
+  }
+  a{color:inherit}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="hud" aria-label="Game HUD">
+    <div class="hud-group">
+      <div class="hud-item"><span class="hud-label">Score</span><span class="hud-val" id="hud-score">000000</span></div>
+      <div class="hud-item"><span class="hud-label">Coins</span><span class="hud-val" id="hud-coins">0</span></div>
+      <div class="hud-item"><span class="hud-label">World</span><span class="hud-val" id="hud-world">1-1</span></div>
+      <div class="hud-item"><span class="hud-label">Time</span><span class="hud-val" id="hud-time">300</span></div>
+      <div class="hud-item"><span class="hud-label">Lives</span><span class="hud-val" id="hud-lives">3</span></div>
+      <div class="hud-item"><span class="hud-label">Power</span><span class="hud-val" id="hud-power">SMALL</span></div>
+      <div class="progress" aria-hidden="true"><i id="progress-bar"></i></div>
+    </div>
+    <div class="hud-actions">
+      <button class="btn" id="btn-pause" aria-label="Pause or resume">⏸︎ Pause</button>
+      <button class="btn" id="btn-mute" aria-label="Mute or unmute">🔊</button>
+    </div>
+  </header>
+
+  <div id="canvas-wrap">
+    <canvas id="game" tabindex="0" aria-label="Low Poly Mario game area"></canvas>
+    <div id="popup-layer" aria-hidden="true"></div>
+    <div id="overlay">
+      <div class="overlay-card">
+        <h1 id="overlay-title">Low Poly Mario</h1>
+        <p id="overlay-sub">World 1-1 — Run and jump to the castle</p>
+        <button class="btn btn-primary" id="overlay-btn">Play</button>
+        <div class="controls-hint">
+          <b>Controls:</b> A/D or ←/→ Walk &bull; Space/W/↑ Jump (hold higher) &bull; Shift/X Run / Fire &bull; S/↓ Duck or enter pipe &bull; P/Esc Pause &bull; R Restart<br>
+          <span style="opacity:.85">Space always jumps — even as Fire Mario. Secrets: hidden 1-Up, Star in a brick, and the pipe cellar.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="touch-controls" aria-label="Touch controls">
+    <div class="t-group">
+      <button class="t-btn" id="t-left" aria-label="Move left">◀</button>
+      <button class="t-btn" id="t-right" aria-label="Move right">▶</button>
+      <button class="t-btn" id="t-down" aria-label="Duck or enter pipe">▼</button>
+    </div>
+    <div class="t-group">
+      <button class="t-btn" id="t-pipe-hint" aria-label="Down for pipe" style="width:auto; padding:0 10px; font-size:12px; line-height:1">PIPE ▼</button>
+      <button class="t-btn" id="t-run" aria-label="Run or fire" style="font-size:13px">RUN</button>
+      <button class="t-btn" id="t-jump" aria-label="Jump">▲</button>
+    </div>
+  </div>
+
+  <footer style="background:#eaf6fb; color:#2a4a46; font-size:12px; padding:8px 10px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap">
+    <span>Entry: <code>index.html</code> • No build step • Three.js 0.160.0 vendored in <code>vendor/</code></span>
+    <span>Made for desktop &amp; touch • Progress saves Best Score/Time locally</span>
+  </footer>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js"
+  }
+}
+</script>
+<script type="module" src="./js/main.js"></script>
+<noscript><div style="padding:16px">Enable JavaScript to play Low Poly Mario.</div></noscript>
+</body>
+</html>
